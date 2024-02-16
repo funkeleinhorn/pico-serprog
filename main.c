@@ -94,6 +94,22 @@ void apply_pin_state(const pio_spi_inst_t *spi, bool state) {
     }
 }
 
+void spi_half_duplex(const pio_spi_inst_t *spi, uint32_t wlen, uint32_t rlen) {
+    fread(write_buffer, 1, wlen, stdin);
+    pio_spi_write8_blocking(spi, write_buffer, wlen);
+
+    putchar(S_ACK);
+    uint32_t chunk;
+    char buf[128];
+
+    for(uint32_t i = 0; i < rlen; i += chunk) {
+        chunk = MIN(rlen - i, sizeof(buf));
+        pio_spi_read8_blocking(spi, buf, chunk);
+        fwrite(buf, 1, chunk, stdout);
+        fflush(stdout);
+    }
+}
+
 void process(const pio_spi_inst_t *spi, int command) {
     static bool pin_state = false;
 
@@ -149,20 +165,7 @@ void process(const pio_spi_inst_t *spi, int command) {
                 uint32_t rlen = getu24();
 
                 cs_select(active_cs_pin);
-                fread(write_buffer, 1, wlen, stdin);
-                pio_spi_write8_blocking(spi, write_buffer, wlen);
-
-                putchar(S_ACK);
-                uint32_t chunk;
-                char buf[128];
-
-                for(uint32_t i = 0; i < rlen; i += chunk) {
-                    chunk = MIN(rlen - i, sizeof(buf));
-                    pio_spi_read8_blocking(spi, buf, chunk);
-                    fwrite(buf, 1, chunk, stdout);
-                    fflush(stdout);
-                }
-
+                spi_half_duplex(spi, wlen, rlen);
                 cs_deselect(active_cs_pin);
             }
             break;
