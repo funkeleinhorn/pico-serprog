@@ -40,8 +40,17 @@
   (1 << S_CMD_S_BUSTYPE)   | \
   (1 << S_CMD_S_SPI_FREQ)  | \
   (1 << S_CMD_S_PIN_STATE) | \
-  (1 << S_CMD_S_SPI_CS)      \
+  (1 << S_CMD_S_SPI_CS)    | \
+  (1 << S_CMD_S_SPI_MODE)    \
 )
+
+enum spi_mode {
+    SPI_MODE_HALF_DUPLEX = 0,
+    SPI_MODE_FULL_DUPLEX = 1,
+    SPI_MODE_MAX = SPI_MODE_FULL_DUPLEX,
+};
+
+enum spi_mode current_spi_mode = SPI_MODE_HALF_DUPLEX;
 
 uint active_cs_pin = 0;
 #define NUM_CS_AVAILABLE 4 // Number of usable chip selects
@@ -110,6 +119,33 @@ void spi_half_duplex(const pio_spi_inst_t *spi, uint32_t wlen, uint32_t rlen) {
     }
 }
 
+void spi_full_duplex(const pio_spi_inst_t *spi, uint32_t wlen, uint32_t rlen) {
+    uint8_t buffer[128];
+
+    putchar(S_ACK);
+
+    while (wlen || rlen) {
+        size_t len = MIN(rlen, wlen);
+        size_t chunk_size = MIN(sizeof(buffer), len);
+        memset(buffer, 0, chunk_size);
+
+        if (wlen) {
+            size_t chunk = MIN(wlen, chunk_size);
+            fread(buffer, 1, chunk, stdin);
+            wlen -= chunk;
+        }
+
+        pio_spi_write8_read8_blocking(spi, buffer, buffer, chunk_size);
+
+        if (rlen) {
+            size_t chunk = MIN(rlen, chunk_size);
+            fwrite(buffer, 1, chunk, stdout);
+            rlen -= chunk;
+        }
+    }
+    fflush(stdout);
+}
+
 void process(const pio_spi_inst_t *spi, int command) {
     static bool pin_state = false;
 
@@ -165,7 +201,16 @@ void process(const pio_spi_inst_t *spi, int command) {
                 uint32_t rlen = getu24();
 
                 cs_select(active_cs_pin);
-                spi_half_duplex(spi, wlen, rlen);
+                switch (current_spi_mode) {
+                case SPI_MODE_HALF_DUPLEX:
+                    spi_half_duplex(spi, wlen, rlen);
+                    break;
+                case SPI_MODE_FULL_DUPLEX:
+                    spi_full_duplex(spi, wlen, rlen);
+                    break;
+                default:
+                    break;
+                }
                 cs_deselect(active_cs_pin);
             }
             break;
@@ -191,6 +236,17 @@ void process(const pio_spi_inst_t *spi, int command) {
                 uint8_t new_cs = getchar();
                 if (new_cs < NUM_CS_AVAILABLE) {
                     active_cs_pin = new_cs;
+                    putchar(S_ACK);
+                } else {
+                    putchar(S_NAK);
+                }
+                break;
+            }
+        case S_CMD_S_SPI_MODE:
+            {
+                uint8_t spi_mode = getchar();
+                if (spi_mode <= SPI_MODE_MAX) {
+                    current_spi_mode = spi_mode;
                     putchar(S_ACK);
                 } else {
                     putchar(S_NAK);
