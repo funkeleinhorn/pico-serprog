@@ -24,3 +24,5 @@
 #define S_CMD_S_SPI_FREQ	0x14	/* Set SPI clock frequency			*/
 #define S_CMD_S_PIN_STATE	0x15	/* Enable/disable output drivers		*/
 #define S_CMD_S_SPI_CS		0x16	/* Set SPI chip select to use			*/
+#define S_CMD_S_SPI_MODE	0x17	/* Sets the spi mode used by S_CMD_O_SPIOP      */
+
