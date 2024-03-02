@@ -41,7 +41,8 @@
   (1 << S_CMD_S_SPI_FREQ)  | \
   (1 << S_CMD_S_PIN_STATE) | \
   (1 << S_CMD_S_SPI_CS)    | \
-  (1 << S_CMD_S_SPI_MODE)    \
+  (1 << S_CMD_S_SPI_MODE)  | \
+  (1 << S_CMD_S_CS_MODE)     \
 )
 
 enum spi_mode {
@@ -51,6 +52,15 @@ enum spi_mode {
 };
 
 enum spi_mode current_spi_mode = SPI_MODE_HALF_DUPLEX;
+
+enum cs_mode {
+    CS_MODE_AUTO = 0,
+    CS_MODE_SELECTED = 1,
+    CS_MODE_DESELECTED = 2,
+    CS_MODE_MAX = CS_MODE_DESELECTED,
+};
+
+enum cs_mode current_cs_mode = CS_MODE_AUTO;
 
 uint active_cs_pin = 0;
 #define NUM_CS_AVAILABLE 4 // Number of usable chip selects
@@ -134,7 +144,7 @@ void spi_full_duplex(const pio_spi_inst_t *spi, uint32_t wlen, uint32_t rlen) {
         pio_spi_write8_read8_blocking(spi, &write_buf, &read_buf, 1);
 
         if (i < rlen) {
-		putchar(read_buf);
+            putchar(read_buf);
         }
     }
     fflush(stdout);
@@ -194,7 +204,9 @@ void process(const pio_spi_inst_t *spi, int command) {
                 uint32_t wlen = getu24();
                 uint32_t rlen = getu24();
 
-                cs_select(active_cs_pin);
+                if (current_cs_mode == CS_MODE_AUTO) {
+                    cs_select(active_cs_pin);
+                }
                 switch (current_spi_mode) {
                 case SPI_MODE_HALF_DUPLEX:
                     spi_half_duplex(spi, wlen, rlen);
@@ -205,7 +217,9 @@ void process(const pio_spi_inst_t *spi, int command) {
                 default:
                     break;
                 }
-                cs_deselect(active_cs_pin);
+                if (current_spi_mode == CS_MODE_AUTO) {
+                    cs_deselect(active_cs_pin);
+                }
             }
             break;
         case S_CMD_S_SPI_FREQ:
@@ -245,7 +259,32 @@ void process(const pio_spi_inst_t *spi, int command) {
                 } else {
                     putchar(S_NAK);
                 } 
-		break;
+                break;
+            }
+        case S_CMD_S_CS_MODE:
+            {
+                uint8_t cs_mode = getchar();
+                if (cs_mode <= CS_MODE_MAX) {
+                    switch (cs_mode) {
+                        case CS_MODE_AUTO:
+                        case CS_MODE_DESELECTED:
+                            cs_deselect(active_cs_pin);
+                            current_cs_mode = cs_mode;
+                            putchar(S_ACK);
+                            break;
+                        case CS_MODE_SELECTED:
+                            cs_select(active_cs_pin);
+                            current_cs_mode = cs_mode;
+                            putchar(S_ACK);
+                            break;
+                        default:
+                            putchar(S_NAK);
+                            break;
+                    }
+                } else {
+                    putchar(S_NAK);
+                }
+                break;
             }
         default:
             putchar(S_NAK);
