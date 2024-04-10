@@ -114,11 +114,15 @@ void apply_pin_state(const pio_spi_inst_t *spi, bool state) {
 }
 
 void spi_half_duplex(const pio_spi_inst_t *spi, uint32_t wlen, uint32_t rlen) {
-    fread(write_buffer, 1, wlen, stdin);
-    pio_spi_write8_blocking(spi, write_buffer, wlen);
+    uint32_t chunk;
+
+    for(uint32_t i = 0; i < wlen; i += chunk) {
+        chunk = MIN(wlen - i, sizeof(write_buffer));
+        fread(write_buffer, 1, wlen, stdin);
+        pio_spi_write8_blocking(spi, write_buffer, wlen);
+    }
 
     putchar(S_ACK);
-    uint32_t chunk;
     char buf[128];
 
     for(uint32_t i = 0; i < rlen; i += chunk) {
@@ -203,6 +207,7 @@ void process(const pio_spi_inst_t *spi, int command) {
 
                 uint32_t wlen = getu24();
                 uint32_t rlen = getu24();
+                uint32_t chunk;
 
                 if (current_cs_mode == CS_MODE_AUTO) {
                     cs_select(active_cs_pin);
